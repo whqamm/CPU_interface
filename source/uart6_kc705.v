@@ -63,13 +63,24 @@
 //
 //
 
-module CPU_Interface (  input   uart_rx,
-                        output   uart_tx,
-                        input   clk, 
+module CPU_Interface (  uart_rx,
+                        uart_tx,
+                        clk, 
                         ///////
-                        //output test_LED,
-                        output CPU_clk
+                        CPU_rst,
+                        CPU_clk,
+                        Dbg_reg_index,
+                        Dbg_reg_data
                       );
+
+input   uart_rx;
+output  uart_tx;
+input   clk; 
+
+output CPU_rst;
+output CPU_clk;
+output Dbg_reg_index;
+input Dbg_reg_data;
 
 //
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -125,6 +136,9 @@ reg         en_16_x_baud;
 
 reg [7:0] test_LED;
 reg CPU_clk;
+reg CPU_rst;
+reg [4:0] Dbg_reg_index;
+wire [31:0] Dbg_reg_data;
 //
 //
 ///////////////////////////////////////////////////////////////////////////////////////////
@@ -296,10 +310,10 @@ reg CPU_clk;
 
   always @ (posedge clk)
   begin
-    case (port_id[1:0]) 
+    case (port_id) 
       
         // Read UART status at port address 00 hex
-        2'b00 : in_port <= { 2'b00,
+        8'd0 : in_port <= { 2'b00,
                              uart_rx_full,
                              uart_rx_half_full,
                              uart_rx_data_present,
@@ -310,11 +324,15 @@ reg CPU_clk;
 
         // Read UART_RX6 data at port address 01 hex
         // (see 'buffer_read' pulse generation below) 
-        2'b01 : in_port <= uart_rx_data_out;
+        8'd1 : in_port <= uart_rx_data_out;
 
         // Read clock frequency contant at port address 02 hex
-        2'b10 : in_port <= clock_frequency_in_MHz;
-
+        8'd2 : in_port <= clock_frequency_in_MHz;
+        //Reg debug
+        8'd3 : in_port <= Dbg_reg_data[31:24];
+        8'd4 : in_port <= Dbg_reg_data[23:16];
+        8'd5 : in_port <= Dbg_reg_data[15:8];
+        8'd6 : in_port <= Dbg_reg_data[7:0];
         // Specify don't care for all other inputs to obtain optimum implementation
         default : in_port <= 8'bXXXXXXXX ;  
 
@@ -356,6 +374,8 @@ reg CPU_clk;
         case (port_id)
             8'd1: test_LED <= out_port;
             8'd2: CPU_clk <= out_port[0];
+            8'd3: Dbg_reg_index <= out_port[4:0];
+            8'd4: CPU_rst <= out_port[0];
             default: test_LED <= out_port;
         endcase
         // Write to UART at port addresses 01 hex
@@ -415,7 +435,7 @@ reg CPU_clk;
   end
 
  /////////////////////////////////////////////////////////////////////////////////////////
-
+//BRAM test
 
 endmodule
 

@@ -9,10 +9,18 @@
                             ; rate. In this example the BAUD rate is set to 115200. See 'UART baud rate' section of
                             ; 'uart6_kc705.vhd' for details of the clock division circuit.
                             ;
+							; output port
                             CONSTANT CPU_clk_port, 02
 							CONSTANT clk_L, 00
 							CONSTANT clk_H, 01
+							CONSTANT REG_index, 03
+							CONSTANT CPU_reset, 04
                             ;
+							; input port
+							CONSTANT reg_data_hh, 03
+							CONSTANT reg_data_hl, 04
+							CONSTANT reg_data_lh, 05
+							CONSTANT reg_data_ll, 06
                             ;
                             ;------------------------------------------------------------------------------------------
                             ; Special Register usage
@@ -62,16 +70,26 @@
 
                             CALL welcome_message
 							
+							JUMP reset_CPU
+							
             wait_for_start: CALL UART_RX
                             JUMP Z, wait_for_start                   ;check for UART timeout
                             CALL UART_TX
 							COMPARE s5, 01
 							JUMP Z, run_certain_steps
+							COMPARE s5, 02
+							JUMP Z, read_regs
+							COMPARE s5, 03
+							JUMP Z, reset_CPU
                             JUMP wait_for_start
                             ;
 		 run_certain_steps: CALL UART_RX
 							JUMP Z, run_certain_steps 
-					   run:	LOAD s6, clk_H
+					   run:	LOAD s6, clk_L
+							OUTPUT s6, CPU_clk_port
+							LOAD s6, clk_H
+							OUTPUT s6, CPU_clk_port
+							LOAD s6, clk_H
 							OUTPUT s6, CPU_clk_port
 							LOAD s6, clk_L
 							OUTPUT s6, CPU_clk_port
@@ -79,6 +97,29 @@
 							SUB s5, 01
 							JUMP NZ, run
 							JUMP wait_for_start
+							
+				read_regs:  CALL UART_RX
+							JUMP Z, read_regs 
+							OUTPUT s5, REG_index
+							INPUT s5, reg_data_hh
+							CALL UART_TX
+							INPUT s5, reg_data_hl
+							CALL UART_TX
+							INPUT s5, reg_data_lh
+							CALL UART_TX
+							INPUT s5, reg_data_ll
+							CALL UART_TX
+							JUMP wait_for_start 
+							
+				reset_CPU:	LOAD s6, clk_L
+							OUTPUT s6, CPU_reset
+							LOAD s6, clk_H
+							OUTPUT s6, CPU_reset
+							OUTPUT s6, CPU_clk_port
+							LOAD s6, clk_L
+							OUTPUT s6, CPU_reset
+							JUMP wait_for_start
+							
 							
            welcome_message: LOAD sB, welcome_msg'upper
                             LOAD sA, welcome_msg'lower
