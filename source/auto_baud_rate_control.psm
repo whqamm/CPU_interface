@@ -1,0 +1,203 @@
+                            CONSTANT clock_frequency_in_MHz_port, 02
+                            ;
+                            ;
+                            ; UART BAUD rate setting
+                            ; ----------------------
+                            ;
+                            ; The initialisation code contained in this program computes a value that will be applied
+                            ; to a clock division circuit so that the UART communication occur at the desired BAUD
+                            ; rate. In this example the BAUD rate is set to 115200. See 'UART baud rate' section of
+                            ; 'uart6_kc705.vhd' for details of the clock division circuit.
+                            ;
+                            CONSTANT CPU_clk_port, 02
+							CONSTANT clk_L, 00
+							CONSTANT clk_H, 01
+                            ;
+                            ;
+                            ;------------------------------------------------------------------------------------------
+                            ; Special Register usage
+                            ;------------------------------------------------------------------------------------------
+                            ;
+							CONSTANT string_start, 20
+                            ; No registers are given special names in this program.
+                            ;
+                            ;------------------------------------------------------------------------------------------
+                            ; Scratch Pad Memory Locations
+                            ;------------------------------------------------------------------------------------------
+                            ;
+                            ; Software delays are implemented relative to the clock frequency. Once calculated by
+                            ; KCPSM6, the following locations will hold values defining the number of iterations
+                            ; of software delay loops required to yield delays of 1us and 1ms.
+                            ;
+                            CONSTANT 1us_delay_count, 3D              ;8-bit value
+                            ;
+                            CONSTANT 1ms_delay_count0, 3E             ;16-bit value
+                            CONSTANT 1ms_delay_count1, 3F
+                            ;
+                            ;
+                            ;------------------------------------------------------------------------------------------
+                            ; Useful data constants
+                            ;------------------------------------------------------------------------------------------
+                            ;
+                            ;
+                            ;
+                            ;------------------------------------------------------------------------------------------
+                            ; Code to skip over address location 003 to avoid corruption caused by 'Hardware
+                            ; Session' following configuration.
+                            ;------------------------------------------------------------------------------------------
+                            ;
+                            JUMP cold_start                           ;Avoid address 003 on start up
+                            JUMP cold_start
+                            JUMP cold_start
+                            JUMP cold_start                           ;Address 003
+                            ;
+                cold_start:                         
+                            ;------------------------------------------------------------------------------------------
+                            ; Initialise UART - Clear internal FIFO buffers
+                            ;------------------------------------------------------------------------------------------
+                            ;
+                            ; The 'reset_UART_macros' routine is contained in 'uart_interface_routines.psm'.
+                            ;
+                            CALL reset_UART_macros
+
+                            CALL welcome_message
+							
+            wait_for_start: CALL UART_RX
+                            JUMP Z, wait_for_start                   ;check for UART timeout
+                            CALL UART_TX
+							COMPARE s5, 01
+							JUMP Z, run_certain_steps
+                            JUMP wait_for_start
+                            ;
+		 run_certain_steps: CALL UART_RX
+							JUMP Z, run_certain_steps 
+					   run:	LOAD s6, clk_H
+							OUTPUT s6, CPU_clk_port
+							LOAD s6, clk_L
+							OUTPUT s6, CPU_clk_port
+							;CALL UART_TX
+							SUB s5, 01
+							JUMP NZ, run
+							JUMP wait_for_start
+							
+           welcome_message: LOAD sB, welcome_msg'upper
+                            LOAD sA, welcome_msg'lower
+                            CALL send_message
+                            ;HWBUILD s5                                ;hardware version defines ASCII letter
+                            ;CALL UART_TX
+                            ;CALL send_CR
+                            RETURN 
+                            ;
+                            ;
+                            ; Welcome message
+                            ;
+                            STRING welcome$, "Welcome WangHuiquan's CPU interface."
+							STRING received$, "Recive: "
+                            ;
+                            ;
+               welcome_msg: LOAD&RETURN s5, welcome$
+                            LOAD&RETURN s5, CR
+                            LOAD&RETURN s5, NUL
+                            ;
+                            ;
+                            ;------------------------------------------------------------------------------------------
+                            ; Send a message to the UART
+                            ;------------------------------------------------------------------------------------------
+                            ;
+                            ; A message is transmitted to the USB-UART.
+                            ; The start address of the message must be provided in [sB,sA].
+                            ; Terminate the transmission with a NULL character (00 hex).
+                            ;
+              send_message: CALL@ (sB, sA)
+                            COMPARE s5, 00                            ;terminate on NUL character
+                            RETURN Z
+                            CALL UART_TX
+                            ADD sA, 1'd
+                            ADDCY sB, 0'd
+                            JUMP send_message
+                            ;
+                            ;
+                            ;------------------------------------------------------------------------------------------
+                            ; Send Carriage Return to UART
+                            ;------------------------------------------------------------------------------------------
+                            ;
+                            ; Registers used s0, s1, s2, and s5.
+                            ;
+                   send_CR: LOAD s5, CR
+                            JUMP UART_TX                              ;includes RETURN
+                            ;
+                            ;
+                            ;------------------------------------------------------------------------------------------
+                            ; Send a Space to UART
+                            ;------------------------------------------------------------------------------------------
+                            ;
+                            ; Registers used s0, s1, s2, and s5.
+                            ;
+                send_space: LOAD s5, " "
+                            JUMP UART_TX                              ;includes RETURN
+                            ;
+                            ;
+                            ;------------------------------------------------------------------------------------------
+                            ; Send decimal digit to UART
+                            ;------------------------------------------------------------------------------------------
+                            ;
+                            ; The value provided in register s5 should be in the range 00 to 09 hex and this will
+                            ; be converted to the corresponding decimal character and sent to the UART
+                            ;
+                            ; Registers used s0, s1, s2, and s5.
+                            ;
+        send_decimal_digit: ADD s5, "0"                               ;convert to ASCII character
+                            JUMP UART_TX                              ;includes RETURN
+                            ;
+                            ;
+                            ;------------------------------------------------------------------------------------------
+                            ; Send Hex Value of Byte to UART
+                            ;------------------------------------------------------------------------------------------
+                            ;
+                            ; Value provided in register 's4' is sent as ASCII HEX to the UART transmitter.
+                            ;
+                            ; Registers used s0, s4 (preserved) and s5.
+                            ;
+             send_hex_byte: LOAD s5, s4                               ;isolate upper nibble
+                            SR0 s5
+                            SR0 s5
+                            SR0 s5
+                            SR0 s5
+                            CALL hex_to_ASCII                         ; convert to ASCII
+                            CALL UART_TX                              ;send upper digit to UART
+                            LOAD s5, s4                               ;isolate lower nibble
+                            AND s5, 0F
+                            CALL hex_to_ASCII                         ; convert to ASCII
+                            CALL UART_TX                              ;send lower digit to UART
+                            RETURN 
+                            ;
+                            ; Convert value 00 to 0F provided in 's5' into ASCII character in 's5'
+                            ;
+                            ; Register used s5
+                            ;
+              hex_to_ASCII: SUB s5, 0A                                ;test if value is in range 0 to 9
+                            JUMP C, number_char
+                            ADD s5, 07                                ;ASCII char A to F in range 41 to 46
+               number_char: ADD s5, 3A                                ;ASCII char 0 to 9 in range 30 to 40
+                            RETURN 
+                            ;
+                            ;
+                            ;------------------------------------------------------------------------------------------
+                            ; Include PSM files
+                            ;------------------------------------------------------------------------------------------
+                            ;
+                            ; The INCLUDE directive enables commonly routines to be kept in their own PSM files and
+                            ; easily reused in different programs (i.e. avoiding 'cut and paste'). It also allows
+                            ; each PSM to remain a more manageable size.
+                            ;
+                            ;
+                            ; Include routines that implement interface with UART macros.
+                            ; -----------------------------------------------------------
+                            ;
+                            INCLUDE "uart_interface_routines.psm"
+                            ;
+                            ;
+                            ;------------------------------------------------------------------------------------------
+                            ; End of Program
+                            ;------------------------------------------------------------------------------------------
+                            ;
